@@ -1,0 +1,9 @@
+go 1.27.2
+
+use (
+	./modules/platform
+	./services/reservation
+	./services/payment
+	./services/loyalty
+	./services/gateway
+)

@@ -1,0 +1,242 @@
+name: Hotels Booking System
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: modules/platform/go.mod
+          cache-dependency-path: |
+            modules/platform/go.sum
+            services/*/go.sum
+      - name: Install golangci-lint
+        run: GOTOOLCHAIN=local go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+      - name: Test Docker entrypoint arguments
+        run: sh scripts/test-entrypoints.sh
+      - name: Check format
+        run: |
+          make -C modules/platform fmt-check
+          make -C modules/platform fmt-check TAGS=integration
+          make -C modules/platform fmt-check TAGS=e2e
+          make -C services/reservation fmt-check
+          make -C services/reservation fmt-check TAGS=integration
+          make -C services/reservation fmt-check TAGS=e2e
+          make -C services/payment fmt-check
+          make -C services/payment fmt-check TAGS=integration
+          make -C services/loyalty fmt-check
+          make -C services/loyalty fmt-check TAGS=integration
+          make -C services/gateway fmt-check
+          make -C services/gateway fmt-check TAGS=integration
+          make -C services/gateway fmt-check TAGS=e2e
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: modules/platform/go.mod
+          cache-dependency-path: |
+            modules/platform/go.sum
+            services/*/go.sum
+      - name: Install golangci-lint
+        run: GOTOOLCHAIN=local go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+      - name: Lint
+        run: |
+          make -C modules/platform lint
+          make -C modules/platform lint TAGS=integration
+          make -C modules/platform lint TAGS=e2e
+          make -C services/reservation lint
+          make -C services/reservation lint TAGS=integration
+          make -C services/reservation lint TAGS=e2e
+          make -C services/payment lint
+          make -C services/payment lint TAGS=integration
+          make -C services/loyalty lint
+          make -C services/loyalty lint TAGS=integration
+          make -C services/gateway lint
+          make -C services/gateway lint TAGS=integration
+          make -C services/gateway lint TAGS=e2e
+
+  modules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: modules/platform/go.mod
+          cache-dependency-path: |
+            modules/platform/go.sum
+            services/*/go.sum
+      - name: Check modules
+        run: |
+          make -C modules/platform tidy
+          make -C services/reservation tidy
+          make -C services/payment tidy
+          make -C services/loyalty tidy
+          make -C services/gateway tidy
+
+  vulnerability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: modules/platform/go.mod
+          cache-dependency-path: |
+            modules/platform/go.sum
+            services/*/go.sum
+      - name: Install govulncheck
+        run: GOTOOLCHAIN=local go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+      - name: Govulncheck
+        run: |
+          make -C modules/platform vuln GOVULNCHECK="$(go env GOPATH)/bin/govulncheck"
+          make -C services/reservation vuln GOVULNCHECK="$(go env GOPATH)/bin/govulncheck"
+          make -C services/payment vuln GOVULNCHECK="$(go env GOPATH)/bin/govulncheck"
+          make -C services/loyalty vuln GOVULNCHECK="$(go env GOPATH)/bin/govulncheck"
+          make -C services/gateway vuln GOVULNCHECK="$(go env GOPATH)/bin/govulncheck"
+
+  reservation:
+    runs-on: ubuntu-latest
+    needs: [format, lint, modules, vulnerability]
+    services:
+      postgres:
+        image: postgres:13-alpine
+        env:
+          POSTGRES_DB: reservations_atlas
+          POSTGRES_USER: program
+          POSTGRES_PASSWORD: test
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U program -d reservations_atlas"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: modules/platform/go.mod
+          cache-dependency-path: |
+            modules/platform/go.sum
+            services/*/go.sum
+      - name: Install test and migration tools
+        run: |
+          GOTOOLCHAIN=local go install gotest.tools/gotestsum@v1.12.3
+          GOTOOLCHAIN=local go install github.com/mikefarah/yq/v4@v4.47.1
+          scripts/install-atlas.sh
+      - name: Validate migrations
+        run: make -C services/reservation migrations-check
+      - name: Build
+        run: make -C services/reservation build
+      - name: Unit tests
+        run: |
+          make -C modules/platform unit-test
+          make -C services/reservation unit-test
+      - name: Integration tests
+        run: make -C services/reservation integration-test
+      - name: Build Docker image
+        run: make -C services/reservation docker-build
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reservation-test-reports
+          path: '**/bin/*.xml'
+
+  new-services:
+    runs-on: ubuntu-latest
+    needs: [format, lint, modules, vulnerability]
+    strategy:
+      matrix:
+        service: [payment, loyalty, gateway]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: modules/platform/go.mod
+          cache-dependency-path: |
+            modules/platform/go.sum
+            services/*/go.sum
+      - name: Install test and migration tools
+        run: |
+          go install gotest.tools/gotestsum@v1.12.3
+          go install github.com/mikefarah/yq/v4@v4.47.1
+          scripts/install-atlas.sh
+      - name: Build and unit tests
+        run: |
+          make -C services/${{ matrix.service }} build
+          make -C services/${{ matrix.service }} unit-test
+
+      - name: Validate migrations
+        if: matrix.service != 'gateway'
+        run: make -C services/${{ matrix.service }} migrations-check
+      - name: Integration tests including Redis recovery contracts
+        run: make -C services/${{ matrix.service }} integration-test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: '${{ matrix.service }}-test-reports'
+          path: '**/bin/*.xml'
+
+  generated:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: modules/platform/go.mod
+      - name: Verify generated clients and mocks
+        run: scripts/check-generated.sh
+
+  acceptance:
+    name: Acceptance tests
+    runs-on: ubuntu-latest
+    needs: [reservation, new-services, generated]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: modules/platform/go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install acceptance tools
+        run: |
+          npm install -g newman@6.2.2
+          go install gotest.tools/gotestsum@v1.12.3
+      - name: Build Docker images
+        run: docker compose build
+      - name: Gateway scenarios and crash recovery
+        run: GATEWAY_E2E_PREBUILT=1 make -C services/gateway e2e-test
+      - name: Validate Compose
+        run: docker compose config --quiet
+      - name: Start services
+        run: docker compose up --build -d
+      - name: Wait for readiness
+        env:
+          WAIT_PORTS: '8080,8070,8060,8050'
+        run: scripts/wait-script.sh
+      - name: Prepare test data
+        run: scripts/prepare-classroom.sh
+      - name: Postman acceptance tests
+        run: newman run --folder success -e v2/postman/environment.json v2/postman/collection.json
+      - name: Fault tolerance acceptance tests
+        run: scripts/test-script.sh v2 loyalty 8050
+      - name: Diagnostics
+        if: always()
+        run: docker compose logs --no-color > compose.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acceptance-diagnostics
+          path: |
+            **/bin/*.xml
+            compose.log
+      - name: Stop services
+        if: always()
+        run: docker compose down

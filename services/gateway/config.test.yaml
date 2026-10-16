@@ -1,0 +1,72 @@
+breaker:
+  failure_threshold: 5
+  reset_timeout: 1s
+opstream:
+  capacity: 256
+  concurrency: 4
+  compensation_capacity: 128
+  compensation_workers: 2
+  cancellation_workers: 1
+  loyalty_workers: 1
+  poll_interval: 100ms
+  lease_duration: 30s
+  storage_timeout: 5s
+  history_ttl: 24h
+  retry_interval: 10s
+  attempt_timeout: 5s
+  rollback_timeout: 5s
+  shutdown_timeout: 20s
+enrichment_concurrency: 4
+http:
+  api_prefix: /api/v1
+  address: "127.0.0.1:58080"
+  read_header_timeout: 5s
+  read_timeout: 10s
+  write_timeout: 15s
+  idle_timeout: 60s
+  request_timeout: 5s
+  shutdown_timeout: 10s
+  max_body_bytes: 4096
+metrics:
+  path: /metrics
+  service: gateway
+  version: "test"
+  latency_buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5]
+openapi:
+  title: Gateway Service
+  version: "1.0.0"
+  docs_path: /docs
+  schema_path: /openapi
+logging:
+  level: error
+  stdout:
+    level: error
+  files: []
+clients:
+  reservation:
+    url: http://localhost:8070/api/v1
+    timeout: 2s
+    max_in_flight: 16
+    max_idle_connections: 32
+    max_idle_connections_per_host: 16
+    idle_connection_timeout: 60s
+  payment:
+    url: http://localhost:8060/api/v1
+    timeout: 2s
+    max_in_flight: 8
+    max_idle_connections: 16
+    max_idle_connections_per_host: 8
+    idle_connection_timeout: 60s
+  loyalty:
+    url: http://localhost:8050/api/v1
+    timeout: 2s
+    max_in_flight: 8
+    max_idle_connections: 16
+    max_idle_connections_per_host: 8
+    idle_connection_timeout: 60s
+
+redis:
+  url: redis://localhost:6379/0
+  prefix: "{lab3:operations}:"
+  pool_size: 8
+  dial_timeout: 5s

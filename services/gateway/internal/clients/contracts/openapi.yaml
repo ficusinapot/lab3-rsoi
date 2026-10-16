@@ -1,0 +1,219 @@
+openapi: 3.0.3
+info:
+  title: Gateway downstream service contracts
+  version: 1.0.0
+paths:
+  /hotels:
+    get:
+      operationId: listHotels
+      parameters:
+        - {name: page, in: query, required: false, schema: {type: integer}}
+        - {name: size, in: query, required: false, schema: {type: integer}}
+      responses:
+        "200":
+          description: Hotel page
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HotelPage'}
+  /hotels/{hotelUid}:
+    get:
+      operationId: getHotel
+      parameters:
+        - {name: hotelUid, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: Hotel
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Hotel'}
+  /reservations:
+    get:
+      operationId: listReservations
+      parameters:
+        - {name: X-User-Name, in: header, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: User reservations
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Reservation'}
+    post:
+      operationId: createReservation
+      parameters:
+        - {name: X-User-Name, in: header, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateReservation'}
+      responses:
+        "201":
+          description: Created reservation
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Reservation'}
+  /reservations/{reservationUid}:
+    get:
+      operationId: getReservation
+      parameters:
+        - {name: reservationUid, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: X-User-Name, in: header, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Reservation
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Reservation'}
+    delete:
+      operationId: cancelReservation
+      parameters:
+        - {name: reservationUid, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: X-User-Name, in: header, required: true, schema: {type: string}}
+      responses:
+        "204": {description: Canceled reservation}
+  /payments:
+    post:
+      operationId: createPayment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreatePayment'}
+      responses:
+        "201":
+          description: Created payment
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Payment'}
+  /payments/{paymentUid}:
+    get:
+      operationId: getPayment
+      parameters:
+        - {name: paymentUid, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: Payment
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Payment'}
+    delete:
+      operationId: cancelPayment
+      parameters:
+        - {name: paymentUid, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "204": {description: Canceled payment}
+  /loyalty:
+    get:
+      operationId: getLoyalty
+      parameters:
+        - {name: X-User-Name, in: header, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Loyalty account
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Loyalty'}
+  /loyalty/reservations:
+    post:
+      operationId: increaseLoyalty
+      parameters:
+        - {name: X-User-Name, in: header, required: true, schema: {type: string}}
+        - {name: Idempotency-Key, in: header, required: false, schema: {type: string}}
+      responses:
+        "200":
+          description: Updated loyalty account
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Loyalty'}
+    delete:
+      operationId: decreaseLoyalty
+      parameters:
+        - {name: X-User-Name, in: header, required: true, schema: {type: string}}
+        - {name: Idempotency-Key, in: header, required: false, schema: {type: string}}
+      responses:
+        "200":
+          description: Updated loyalty account
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Loyalty'}
+  /loyalty/reservations/{reservationUid}/resolve:
+    post:
+      operationId: resolveCreation
+      parameters:
+        - {name: reservationUid, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: X-User-Name, in: header, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Durable creation decision
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [committed]
+                properties:
+                  committed: {type: boolean}
+
+components:
+  schemas:
+    Hotel:
+      type: object
+      required: [hotelUid, name, country, city, address, price]
+      properties:
+        hotelUid: {type: string, format: uuid}
+        name: {type: string}
+        country: {type: string}
+        city: {type: string}
+        address: {type: string}
+        stars: {type: integer, nullable: true}
+        price: {type: integer}
+    HotelPage:
+      type: object
+      required: [page, pageSize, totalElements, items]
+      properties:
+        page: {type: integer}
+        pageSize: {type: integer}
+        totalElements: {type: integer}
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/Hotel'}
+    Reservation:
+      type: object
+      required: [reservationUid, hotelUid, paymentUid, status, startDate, endDate]
+      properties:
+        reservationUid: {type: string, format: uuid}
+        hotelUid: {type: string, format: uuid}
+        paymentUid: {type: string, format: uuid}
+        status: {type: string, enum: [PAID, CANCELED]}
+        startDate: {type: string, format: date}
+        endDate: {type: string, format: date}
+    CreateReservation:
+      type: object
+      required: [hotelUid, paymentUid, startDate, endDate]
+      properties:
+        reservationUid: {type: string, format: uuid}
+        hotelUid: {type: string, format: uuid}
+        paymentUid: {type: string, format: uuid}
+        startDate: {type: string, format: date}
+        endDate: {type: string, format: date}
+    Payment:
+      type: object
+      required: [paymentUid, status, price]
+      properties:
+        paymentUid: {type: string, format: uuid}
+        status: {type: string, enum: [PAID, CANCELED]}
+        price: {type: integer}
+    CreatePayment:
+      type: object
+      required: [price]
+      properties:
+        paymentUid: {type: string, format: uuid}
+        price: {type: integer}
+    Loyalty:
+      type: object
+      required: [status, discount, reservationCount]
+      properties:
+        status: {type: string, enum: [BRONZE, SILVER, GOLD]}
+        discount: {type: integer}
+        reservationCount: {type: integer}

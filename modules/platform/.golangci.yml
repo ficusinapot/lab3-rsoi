@@ -1,0 +1,83 @@
+version: "2"
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - exhaustive
+    - asciicheck
+    - gosec
+    - unparam
+    - wrapcheck
+    - durationcheck
+    - errorlint
+    - goconst
+    - misspell
+    - nilerr
+    - paralleltest
+    - prealloc
+    - spancheck
+    - testifylint
+    - unconvert
+    - asasalint
+    - bidichk
+    - bodyclose
+    - contextcheck
+    - depguard
+    - gocritic
+    - loggercheck
+    - musttag
+    - errchkjson
+    - errname
+    - nolintlint
+    - lll
+  exclusions:
+    generated: lax
+  settings:
+    lll:
+      line-length: 120
+    wrapcheck:
+      ignore-sig-regexps:
+        - '^func \(github\.com/samber/oops\.OopsErrorBuilder\)\.Join\('
+    depguard:
+      rules:
+        internal_only:
+          files:
+            - "**/internal/**/*.go"
+          allow:
+            - $gostd
+            - lab2/platform
+            - lab2/reservation
+            - ariga.io/atlas
+            - ariga.io/atlas-go-sdk
+            - entgo.io/ent
+            - github.com/danielgtaylor/huma/v2
+            - github.com/autometrics-dev/autometrics-go
+            - github.com/go-chi/chi/v5
+            - github.com/felixge/httpsnoop
+            - github.com/go-viper/mapstructure/v2
+            - github.com/google/uuid
+            - github.com/jackc/pgx/v5
+            - github.com/prometheus/client_golang/prometheus
+            - github.com/prometheus/client_golang/prometheus/promhttp
+            - github.com/samber/oops
+            - github.com/spf13/cobra
+            - github.com/spf13/viper
+            - github.com/stretchr/testify
+            - go.opentelemetry.io/otel
+            - go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
+            - go.uber.org/dig
+            - go.uber.org/mock/gomock
+run:
+  timeout: 5m
+formatters:
+  enable:
+    - gofumpt
+  settings:
+    gofumpt:
+      module-path: lab2
+      extra-rules: false
+  exclusions:
+    generated: lax

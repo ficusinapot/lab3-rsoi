@@ -1,0 +1,36 @@
+http:
+  api_prefix: /api/v1
+  address: "127.0.0.1:58070"
+  read_header_timeout: 5s
+  read_timeout: 10s
+  write_timeout: 15s
+  idle_timeout: 60s
+  request_timeout: 5s
+  shutdown_timeout: 10s
+  max_body_bytes: 4096
+database:
+  url: postgres://program:test@localhost:55432/reservations_atlas?sslmode=disable
+  max_open_connections: 5
+  max_idle_connections: 2
+  connection_max_lifetime: 5m
+  connection_max_idle_time: 1m
+  connect_timeout: 5s
+metrics:
+  path: /metrics
+  service: reservation
+  version: "test"
+  latency_buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5]
+openapi:
+  title: Reservation Service
+  version: "1.0.0"
+  docs_path: /docs
+  schema_path: /openapi
+pagination:
+  default_page: 1
+  default_size: 10
+  max_size: 1000
+logging:
+  level: error
+  stdout:
+    level: error
+  files: []

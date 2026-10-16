@@ -1,0 +1,111 @@
+services:
+  operation-redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    volumes:
+      - operation-data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  reservation-db:
+    image: postgres:13-alpine
+    environment:
+      POSTGRES_DB: reservations
+      POSTGRES_USER: program
+      POSTGRES_PASSWORD: test
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - reservation-data:/var/lib/postgresql/data
+      - ./postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U program -d reservations"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  reservation:
+    image: lab3-reservation
+    build:
+      context: .
+      dockerfile: services/reservation/Dockerfile
+    volumes:
+      - ./services/reservation/config.docker.yaml:/app/config.yaml:ro
+      - ./services/reservation/migrations.yaml:/app/migrations.yaml:ro
+    ports:
+      - "127.0.0.1:8070:8070"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8070/manage/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    depends_on:
+      reservation-db:
+        condition: service_healthy
+  payment:
+    image: lab3-payment
+    build:
+      context: .
+      dockerfile: services/payment/Dockerfile
+    volumes:
+      - ./services/payment/config.docker.yaml:/app/config.yaml:ro
+      - ./services/payment/migrations.yaml:/app/migrations.yaml:ro
+    ports:
+      - "127.0.0.1:8060:8060"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8060/manage/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    depends_on:
+      reservation-db:
+        condition: service_healthy
+  loyalty:
+    image: lab3-loyalty
+    build:
+      context: .
+      dockerfile: services/loyalty/Dockerfile
+    volumes:
+      - ./services/loyalty/config.docker.yaml:/app/config.yaml:ro
+      - ./services/loyalty/migrations.yaml:/app/migrations.yaml:ro
+    ports:
+      - "127.0.0.1:8050:8050"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8050/manage/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    depends_on:
+      reservation-db:
+        condition: service_healthy
+  gateway:
+    image: lab3-gateway
+    stop_grace_period: 40s
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    volumes:
+      - ./services/gateway/config.docker.yaml:/app/config.yaml:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/manage/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    depends_on:
+      reservation:
+        condition: service_healthy
+      payment:
+        condition: service_healthy
+      loyalty:
+        condition: service_healthy
+      operation-redis:
+        condition: service_healthy
+volumes:
+  operation-data:
+  reservation-data:
