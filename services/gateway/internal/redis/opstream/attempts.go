@@ -1,4 +1,4 @@
-package repos
+package opstream
 
 import (
 	"context"
@@ -22,13 +22,13 @@ func (s *Store) Start(ctx context.Context, task entities.Operation) (opstreamifc
 			if record.State != stateReserved || record.Owner != s.owner.String() || record.Until <= now {
 				return false, nil
 			}
-			token, err := tx.Incr(ctx, s.keys[7]).Result()
+			token, err := tx.Incr(ctx, s.keys.generation).Result()
 			if err != nil {
 				return false, oops.Wrap(err)
 			}
 			until := now + s.cfg.LeaseDuration.Milliseconds()
 			_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-				pipe.HSet(ctx, s.keys[0]+task.Key.String(), "task", data, "state", stateRunning,
+				pipe.HSet(ctx, s.keys.operationPrefix+task.Key.String(), "task", data, "state", stateRunning,
 					"token", token, "number", 1, "until", until)
 				s.schedule(ctx, pipe, task.Key.String(), record.Lane, until)
 				return nil
@@ -57,8 +57,8 @@ func (s *Store) Take(ctx context.Context, key uuid.UUID) (opstreamifc.Attempt, b
 				_, err := tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 					s.acknowledge(ctx, pipe, key.String(), record)
 					s.remove(ctx, pipe, key.String())
-					pipe.HSet(ctx, s.keys[0]+key.String(), "state", stateCompleted, "until", 0)
-					pipe.PExpire(ctx, s.keys[0]+key.String(), s.cfg.HistoryTTL)
+					pipe.HSet(ctx, s.keys.operationPrefix+key.String(), "state", stateCompleted, "until", 0)
+					pipe.PExpire(ctx, s.keys.operationPrefix+key.String(), s.cfg.HistoryTTL)
 					return nil
 				})
 				return false, oops.Wrap(err)
@@ -67,7 +67,7 @@ func (s *Store) Take(ctx context.Context, key uuid.UUID) (opstreamifc.Attempt, b
 			if err := decodeTask([]byte(record.Task), &task); err != nil {
 				return false, oops.Wrap(err)
 			}
-			token, err := tx.Incr(ctx, s.keys[7]).Result()
+			token, err := tx.Incr(ctx, s.keys.generation).Result()
 			if err != nil {
 				return false, oops.Wrap(err)
 			}
@@ -77,7 +77,7 @@ func (s *Store) Take(ctx context.Context, key uuid.UUID) (opstreamifc.Attempt, b
 					Stream: stream, Group: consumerGroup, Consumer: s.owner.String(), Messages: []string{record.Message},
 				})
 				pipe.Incr(ctx, stream+":version")
-				pipe.HSet(ctx, s.keys[0]+key.String(), "state", stateRunning, "owner", s.owner.String(),
+				pipe.HSet(ctx, s.keys.operationPrefix+key.String(), "state", stateRunning, "owner", s.owner.String(),
 					"token", token, "number", record.Number+1, "until", now+s.cfg.LeaseDuration.Milliseconds())
 				return nil
 			})
@@ -134,21 +134,21 @@ func (s *Store) Finish(
 			}
 			_, err := tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 				s.acknowledge(ctx, pipe, key, record)
-				pipe.HSet(ctx, s.keys[0]+key, "task", data, "state", state, "error", detail)
+				pipe.HSet(ctx, s.keys.operationPrefix+key, "task", data, "state", state, "error", detail)
 				switch {
 				case state == stateDeferred:
 					until := now + s.cfg.RetryInterval.Milliseconds()
-					pipe.HSet(ctx, s.keys[0]+key, "until", until, "lane", lane(result.Task))
+					pipe.HSet(ctx, s.keys.operationPrefix+key, "until", until, "lane", lane(result.Task))
 					s.schedule(ctx, pipe, key, lane(result.Task), until)
 				case result.Status == entities.OperationFailed:
-					for _, queue := range s.keys[4:7] {
+					for _, queue := range s.keys.dueQueues() {
 						pipe.ZRem(ctx, queue, key)
 					}
-					pipe.HSet(ctx, s.keys[0]+key, "until", 0)
+					pipe.HSet(ctx, s.keys.operationPrefix+key, "until", 0)
 				default:
 					s.remove(ctx, pipe, key)
-					pipe.HSet(ctx, s.keys[0]+key, "until", 0)
-					pipe.PExpire(ctx, s.keys[0]+key, s.cfg.HistoryTTL)
+					pipe.HSet(ctx, s.keys.operationPrefix+key, "until", 0)
+					pipe.PExpire(ctx, s.keys.operationPrefix+key, s.cfg.HistoryTTL)
 				}
 				return nil
 			})

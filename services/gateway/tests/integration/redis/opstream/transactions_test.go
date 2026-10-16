@@ -1,6 +1,6 @@
 //go:build integration
 
-package operations
+package opstream
 
 import (
 	"errors"
@@ -14,7 +14,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"lab2/gateway/internal/models/entities"
-	"lab2/gateway/internal/redis/repos"
+	opstreamrepo "lab2/gateway/internal/redis/opstream"
 )
 
 func TestConcurrentTransactions(t *testing.T) {
@@ -31,7 +31,7 @@ func TestConcurrentTransactions(t *testing.T) {
 	t.Run("concurrent reservations respect both budgets", func(t *testing.T) {
 		t.Parallel()
 		prefix := "{" + uuid.New().String() + "}:"
-		stores := []*repos.Store{newStore(t, url, prefix), newStore(t, url, prefix)}
+		stores := []*opstreamrepo.Store{newStore(t, url, prefix), newStore(t, url, prefix)}
 		type result struct {
 			kind     entities.OperationKind
 			accepted bool
@@ -83,13 +83,13 @@ func TestConcurrentTransactions(t *testing.T) {
 		}
 		time.Sleep(operationConfig().RetryInterval + 20*time.Millisecond)
 		type delivery struct {
-			store *repos.Store
+			store *opstreamrepo.Store
 			keys  []uuid.UUID
 			err   error
 		}
 		deliveries := make(chan delivery, 2)
 		begin := make(chan struct{})
-		for _, store := range []*repos.Store{first, second} {
+		for _, store := range []*opstreamrepo.Store{first, second} {
 			go func() {
 				<-begin
 				keys, err := store.ReadyKeys(t.Context(), "compensation")

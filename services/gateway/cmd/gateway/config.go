@@ -3,7 +3,7 @@ package main
 import (
 	"errors"
 
-	redisrepo "lab2/gateway/internal/redis/repos"
+	redisopstream "lab2/gateway/internal/redis/opstream"
 
 	"lab2/gateway/internal/core/services/opstream"
 
@@ -15,7 +15,7 @@ import (
 )
 
 type Config struct {
-	Redis                 redisrepo.Config         `mapstructure:"redis"`
+	Redis                 redisopstream.Config     `mapstructure:"redis"`
 	Breaker               httpclient.BreakerConfig `mapstructure:"breaker"`
 	OpStream              opstream.Config          `mapstructure:"opstream"`
 	EnrichmentConcurrency int                      `mapstructure:"enrichment_concurrency"`

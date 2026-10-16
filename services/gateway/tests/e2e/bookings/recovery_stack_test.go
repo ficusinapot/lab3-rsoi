@@ -224,7 +224,7 @@ func newNativeGateway(t *testing.T, s *stack, proxies map[string]*faultProxy) *n
 	replacements := map[string]string{
 		`address: ":8080"`:         `address: "` + address + `"`,
 		"redis://localhost:6379/0": s.redisURL,
-		"{lab3:operations}:":       "{recovery:" + uuid.New().String() + "}:",
+		"{lab3-operations}:":       "{recovery-" + uuid.New().String() + "}:",
 		"lease_duration: 30s":      "lease_duration: 12s",
 		"http://localhost:8060":    proxies[paymentServiceName].server.URL,
 		"http://localhost:8070":    proxies[reservationServiceName].server.URL,

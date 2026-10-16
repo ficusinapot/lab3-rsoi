@@ -1,6 +1,6 @@
 //go:build integration
 
-package operations
+package opstream
 
 import (
 	"context"
@@ -19,7 +19,7 @@ import (
 	"lab2/gateway/internal/core/services/opstream"
 	"lab2/gateway/internal/models/entities"
 	"lab2/gateway/internal/models/opstreamifc"
-	"lab2/gateway/internal/redis/repos"
+	opstreamrepo "lab2/gateway/internal/redis/opstream"
 )
 
 const fixtureUser = "user"
@@ -47,9 +47,9 @@ func redisURL(t *testing.T, container testcontainers.Container) string {
 	return "redis://" + net.JoinHostPort(host, port.Port()) + "/0"
 }
 
-func newStore(t *testing.T, url, prefix string) *repos.Store {
+func newStore(t *testing.T, url, prefix string) *opstreamrepo.Store {
 	t.Helper()
-	store, err := repos.New(t.Context(), repos.Config{
+	store, err := opstreamrepo.New(t.Context(), opstreamrepo.Config{
 		URL: url, Prefix: prefix, PoolSize: 4, DialTimeout: time.Second,
 	}, operationConfig())
 	if err != nil {
@@ -63,7 +63,7 @@ func newStore(t *testing.T, url, prefix string) *repos.Store {
 	return store
 }
 
-func reserve(t *testing.T, store *repos.Store, key uuid.UUID, kind entities.OperationKind) {
+func reserve(t *testing.T, store *opstreamrepo.Store, key uuid.UUID, kind entities.OperationKind) {
 	t.Helper()
 	ok, err := store.Reserve(t.Context(), key, kind)
 	if !ok || err != nil {
@@ -71,7 +71,7 @@ func reserve(t *testing.T, store *repos.Store, key uuid.UUID, kind entities.Oper
 	}
 }
 
-func start(t *testing.T, store *repos.Store, task entities.Operation) opstreamifc.Attempt {
+func start(t *testing.T, store *opstreamrepo.Store, task entities.Operation) opstreamifc.Attempt {
 	t.Helper()
 	reserve(t, store, testKey(task.Key), task.Kind)
 	attempt, ok, err := store.Start(t.Context(), task)
@@ -282,7 +282,7 @@ func TestRedisOperations(t *testing.T) {
 				return oops.Wrap(receiveErr)
 			}
 			_, execErr := tx.TxPipelined(t.Context(), func(pipe redis.Pipeliner) error {
-				pipe.HSet(t.Context(), prefix+"record:"+task.Key.String(), "error", "stale result")
+				pipe.HSet(t.Context(), prefix+"operation:"+task.Key.String(), "error", "stale result")
 				return nil
 			})
 			return oops.Wrap(execErr)

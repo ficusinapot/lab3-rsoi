@@ -1,6 +1,6 @@
 //go:build integration
 
-package operations
+package opstream
 
 import (
 	"crypto/sha256"

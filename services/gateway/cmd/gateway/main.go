@@ -12,7 +12,7 @@ import (
 
 	"github.com/samber/oops"
 	"github.com/spf13/cobra"
-	redisrepo "lab2/gateway/internal/redis/repos"
+	redisopstream "lab2/gateway/internal/redis/opstream"
 	"lab2/platform/config"
 )
 
@@ -59,7 +59,7 @@ func operationCommand(cmd *cobra.Command, cfg Config) (err error) {
 	}
 	ctx, cancel := context.WithTimeout(cmd.Context(), cfg.OpStream.StorageTimeout)
 	defer cancel()
-	store, err := redisrepo.New(ctx, cfg.Redis, cfg.OpStream)
+	store, err := redisopstream.New(ctx, cfg.Redis, cfg.OpStream)
 	if err != nil {
 		return oops.Wrap(err)
 	}

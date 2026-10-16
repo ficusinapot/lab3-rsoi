@@ -1,4 +1,4 @@
-package repos
+package opstream
 
 import (
 	"context"
@@ -40,7 +40,7 @@ func (s *Store) update(
 ) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, s.cfg.StorageTimeout)
 	defer cancel()
-	watched = append([]string{s.keys[0] + key}, watched...)
+	watched = append([]string{s.keys.operationPrefix + key}, watched...)
 	for {
 		if err := ctx.Err(); err != nil {
 			return false, oops.Wrap(err)
@@ -48,7 +48,7 @@ func (s *Store) update(
 		var updated bool
 		err := s.client.Watch(ctx, func(tx *redis.Tx) error {
 			var record operationRecord
-			if err := tx.HGetAll(ctx, s.keys[0]+key).Scan(&record); err != nil {
+			if err := tx.HGetAll(ctx, s.keys.operationPrefix+key).Scan(&record); err != nil {
 				return oops.Wrap(err)
 			}
 			now, err := tx.Time(ctx).Result()
@@ -67,16 +67,16 @@ func (s *Store) update(
 func (s *Store) laneKeys(lane string) (string, string) {
 	switch lane {
 	case laneCompensation:
-		return s.keys[4], s.keys[8]
+		return s.keys.compensationDue, s.keys.compensationStream
 	case laneCancellation:
-		return s.keys[5], s.keys[9]
+		return s.keys.cancellationDue, s.keys.cancellationStream
 	default:
-		return s.keys[6], s.keys[10]
+		return s.keys.loyaltyDue, s.keys.loyaltyStream
 	}
 }
 
 func (s *Store) schedule(ctx context.Context, pipe redis.Pipeliner, key, lane string, when int64) {
-	for _, queue := range s.keys[4:7] {
+	for _, queue := range s.keys.dueQueues() {
 		pipe.ZRem(ctx, queue, key)
 	}
 	queue, _ := s.laneKeys(lane)
@@ -84,10 +84,10 @@ func (s *Store) schedule(ctx context.Context, pipe redis.Pipeliner, key, lane st
 }
 
 func (s *Store) remove(ctx context.Context, pipe redis.Pipeliner, key string) {
-	for _, set := range s.keys[1:4] {
+	for _, set := range s.keys.operationSets() {
 		pipe.SRem(ctx, set, key)
 	}
-	for _, queue := range s.keys[4:7] {
+	for _, queue := range s.keys.dueQueues() {
 		pipe.ZRem(ctx, queue, key)
 	}
 }
@@ -100,7 +100,7 @@ func (s *Store) acknowledge(ctx context.Context, pipe redis.Pipeliner, key strin
 	pipe.XAck(ctx, stream, consumerGroup, record.Message)
 	pipe.XDel(ctx, stream, record.Message)
 	pipe.Incr(ctx, stream+":version")
-	pipe.HDel(ctx, s.keys[0]+key, "message")
+	pipe.HDel(ctx, s.keys.operationPrefix+key, "message")
 }
 
 // Redis does not invalidate WATCH for PEL changes. Every delivery mutation

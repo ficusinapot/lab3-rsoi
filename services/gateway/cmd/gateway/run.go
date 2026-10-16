@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	redisrepo "lab2/gateway/internal/redis/repos"
+	redisopstream "lab2/gateway/internal/redis/opstream"
 
 	"lab2/gateway/internal/core/services/opstream"
 
@@ -67,7 +67,7 @@ func Run(ctx context.Context, cfg Config) (err error) {
 	actions := operations.NewActions(reservations, payments, loyalty)
 	processor := operations.New(actions)
 	storageCtx, cancelStorage := context.WithTimeout(ctx, cfg.OpStream.StorageTimeout)
-	store, err := redisrepo.New(storageCtx, cfg.Redis, cfg.OpStream)
+	store, err := redisopstream.New(storageCtx, cfg.Redis, cfg.OpStream)
 	cancelStorage()
 	if err != nil {
 		return oops.Wrap(err)

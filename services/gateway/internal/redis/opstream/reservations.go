@@ -1,4 +1,4 @@
-package repos
+package opstream
 
 import (
 	"context"
@@ -11,19 +11,19 @@ import (
 )
 
 func (s *Store) Reserve(ctx context.Context, key uuid.UUID, kind entities.OperationKind) (bool, error) {
-	class, lane, limit := s.keys[3], laneCancellation, s.cfg.Capacity-s.cfg.CompensationCapacity
+	class, lane, limit := s.keys.normalSet, laneCancellation, s.cfg.Capacity-s.cfg.CompensationCapacity
 	if kind == entities.OperationCompensation {
-		class, lane, limit = s.keys[2], laneCompensation, s.cfg.CompensationCapacity
+		class, lane, limit = s.keys.compensationSet, laneCompensation, s.cfg.CompensationCapacity
 	}
 	var full bool
-	reserved, err := s.update(ctx, key.String(), []string{s.keys[1], class},
+	reserved, err := s.update(ctx, key.String(), []string{s.keys.activeSet, class},
 		func(tx *redis.Tx, record operationRecord, now int64) (bool, error) {
 			full = false
-			active, err := tx.SIsMember(ctx, s.keys[1], key.String()).Result()
+			active, err := tx.SIsMember(ctx, s.keys.activeSet, key.String()).Result()
 			if err != nil || active || record.State == stateCompleted {
 				return false, oops.Wrap(err)
 			}
-			total, err := tx.SCard(ctx, s.keys[1]).Result()
+			total, err := tx.SCard(ctx, s.keys.activeSet).Result()
 			if err != nil {
 				return false, oops.Wrap(err)
 			}
@@ -35,18 +35,18 @@ func (s *Store) Reserve(ctx context.Context, key uuid.UUID, kind entities.Operat
 				full = true
 				return false, nil
 			}
-			token, err := tx.Incr(ctx, s.keys[7]).Result()
+			token, err := tx.Incr(ctx, s.keys.generation).Result()
 			if err != nil {
 				return false, oops.Wrap(err)
 			}
 			until := now + s.cfg.LeaseDuration.Milliseconds()
 			_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-				pipe.Del(ctx, s.keys[0]+key.String())
-				pipe.HSet(ctx, s.keys[0]+key.String(), map[string]any{
+				pipe.Del(ctx, s.keys.operationPrefix+key.String())
+				pipe.HSet(ctx, s.keys.operationPrefix+key.String(), map[string]any{
 					"state": stateReserved, "owner": s.owner.String(), "token": strconv.FormatInt(token, 10),
 					"kind": int(kind), "number": 0, "task": "", "lane": lane, "until": until,
 				})
-				pipe.SAdd(ctx, s.keys[1], key.String())
+				pipe.SAdd(ctx, s.keys.activeSet, key.String())
 				pipe.SAdd(ctx, class, key.String())
 				s.schedule(ctx, pipe, key.String(), lane, until)
 				return nil
@@ -70,8 +70,8 @@ func (s *Store) Release(ctx context.Context, key uuid.UUID) error {
 			}
 			_, err := tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 				s.remove(ctx, pipe, key.String())
-				pipe.HSet(ctx, s.keys[0]+key.String(), "state", stateCompleted, "until", 0, "task", "")
-				pipe.PExpire(ctx, s.keys[0]+key.String(), s.cfg.HistoryTTL)
+				pipe.HSet(ctx, s.keys.operationPrefix+key.String(), "state", stateCompleted, "until", 0, "task", "")
+				pipe.PExpire(ctx, s.keys.operationPrefix+key.String(), s.cfg.HistoryTTL)
 				return nil
 			})
 			return err == nil, oops.Wrap(err)
@@ -96,7 +96,7 @@ func (s *Store) Prepare(ctx context.Context, task entities.Operation) error {
 				return false, nil
 			}
 			_, err := tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-				pipe.HSet(ctx, s.keys[0]+task.Key.String(), "task", data)
+				pipe.HSet(ctx, s.keys.operationPrefix+task.Key.String(), "task", data)
 				return nil
 			})
 			return err == nil, oops.Wrap(err)
@@ -114,8 +114,8 @@ func (s *Store) Pending(ctx context.Context, key uuid.UUID) (entities.Operation,
 	var active *redis.BoolCmd
 	var fields *redis.MapStringStringCmd
 	_, err := s.client.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-		active = pipe.SIsMember(ctx, s.keys[1], key.String())
-		fields = pipe.HGetAll(ctx, s.keys[0]+key.String())
+		active = pipe.SIsMember(ctx, s.keys.activeSet, key.String())
+		fields = pipe.HGetAll(ctx, s.keys.operationPrefix+key.String())
 		return nil
 	})
 	if err != nil {
@@ -137,22 +137,22 @@ func (s *Store) Pending(ctx context.Context, key uuid.UUID) (entities.Operation,
 }
 
 func (s *Store) Remaining(ctx context.Context) (int, error) {
-	count, err := s.client.SCard(ctx, s.keys[1]).Result()
+	count, err := s.client.SCard(ctx, s.keys.activeSet).Result()
 	return int(count), storeError(err)
 }
 
 func (s *Store) RetryFailed(ctx context.Context, key uuid.UUID) error {
-	retried, err := s.update(ctx, key.String(), []string{s.keys[1]},
+	retried, err := s.update(ctx, key.String(), []string{s.keys.activeSet},
 		func(tx *redis.Tx, record operationRecord, now int64) (bool, error) {
 			if record.State != stateFailed {
 				return false, nil
 			}
-			active, err := tx.SIsMember(ctx, s.keys[1], key.String()).Result()
+			active, err := tx.SIsMember(ctx, s.keys.activeSet, key.String()).Result()
 			if err != nil || !active {
 				return false, oops.Wrap(err)
 			}
 			_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-				pipe.HSet(ctx, s.keys[0]+key.String(), "state", stateDeferred, "until", now)
+				pipe.HSet(ctx, s.keys.operationPrefix+key.String(), "state", stateDeferred, "until", now)
 				s.schedule(ctx, pipe, key.String(), record.Lane, now)
 				return nil
 			})

@@ -67,6 +67,6 @@ clients:
 
 redis:
   url: redis://operation-redis:6379/0
-  prefix: "{lab3:operations}:"
+  prefix: "{lab3-operations}:"
   pool_size: 8
   dial_timeout: 5s

@@ -1,4 +1,4 @@
-package repos
+package opstream
 
 import (
 	"context"
@@ -117,7 +117,7 @@ func (s *Store) publish(ctx context.Context, key, lane string) error {
 				if id != "" {
 					// The explicit ID lets XADD and its record reference commit together.
 					pipe.XAdd(ctx, &redis.XAddArgs{Stream: stream, ID: id, Values: map[string]any{"key": key}})
-					pipe.HSet(ctx, s.keys[0]+key, "message", id)
+					pipe.HSet(ctx, s.keys.operationPrefix+key, "message", id)
 				}
 				pipe.ZRem(ctx, queue, key)
 				return nil
