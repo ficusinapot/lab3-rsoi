@@ -12,7 +12,7 @@ import (
 )
 
 func (s *Store) ReadyKeys(ctx context.Context, lane string) ([]uuid.UUID, error) {
-	keys := []uuid.UUID{}
+	var keys []uuid.UUID
 	for _, name := range []string{laneCompensation, laneCancellation, laneLoyalty} {
 		if lane != "" && lane != name {
 			continue

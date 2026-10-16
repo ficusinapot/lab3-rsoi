@@ -85,7 +85,10 @@ func TestRecovery(t *testing.T) {
 		loyaltyServiceName:     newFaultProxy(t, s.addresses[loyaltyServiceName]),
 	}
 	gateway := newNativeGateway(t, s, proxies)
-	observed := &stack{gateway: gateway.address}
+	observed := &stack{
+		gateway: gateway.address,
+		db:      s.db,
+	}
 
 	t.Run("cancel waits for the visible reservation to finish creation", func(t *testing.T) {
 		user := "concurrent-create-" + uuid.New().String()
@@ -113,9 +116,8 @@ func TestRecovery(t *testing.T) {
 		}
 		request(t, http.MethodDelete, bookingURL, user, nil, nil, http.StatusNoContent)
 		assertRecoveryBooking(t, gateway.address, user, id, "CANCELED")
-		if count := reservationCount(t, observed, user); count != 0 {
-			t.Fatal("canceled booking remains counted", count)
-		}
+		await(t, func() bool { return gateway.completed(t, "cancel:"+id) })
+		loyalty(t, observed, user, 0, 5, "BRONZE")
 	})
 
 	for _, service := range []string{paymentServiceName, reservationServiceName, loyaltyServiceName} {
