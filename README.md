@@ -190,7 +190,8 @@ loyalty:
 ## Отказоустойчивость (lab3, v2)
 
 Go module/import paths `lab2/*`, Ent/Atlas и ручная сборка зависимостей сохранены.
-Gateway использует `sony/gobreaker/v2`: независимый breaker для Reservation, Payment и Loyalty.
+Gateway использует независимый breaker для Reservation, Payment и Loyalty
+с циклическим массивом результатов завершённых чтений.
 В YAML `breaker.failure_threshold: 5`, `breaker.reset_timeout: 1s`: первые пять
 ошибок доступности достигают upstream, шестой запрос отклоняется локально;
 после секунды допускается одна HalfOpen-проба. Успех возобновляет чтения.

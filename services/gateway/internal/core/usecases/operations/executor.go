@@ -9,12 +9,12 @@ import (
 	"lab2/gateway/internal/models/operationifc"
 )
 
-type Executor struct{ visitor entities.ActionVisitors }
+type Executor struct{ binder entities.ActionBinder }
 
 var _ operationifc.ActionExecutor = (*Executor)(nil)
 
-func NewExecutor(visitor entities.ActionVisitors) *Executor {
-	return &Executor{visitor: visitor}
+func NewExecutor(binder entities.ActionBinder) *Executor {
+	return &Executor{binder: binder}
 }
 
 // Execute recovers at each action boundary so confirmed steps stay confirmed.
@@ -30,6 +30,7 @@ func (e *Executor) Execute(ctx context.Context, action entities.Action) (stop bo
 	if err := action.Validate(); err != nil {
 		return false, oops.Wrap(err)
 	}
-	stop, err = action.Accept(ctx, e.visitor)
+	bound := action.Bind(e.binder)
+	stop, err = bound.Accept(ctx)
 	return stop, oops.Wrap(err)
 }

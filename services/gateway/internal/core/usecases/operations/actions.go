@@ -10,44 +10,73 @@ import (
 	"lab2/gateway/internal/models/reservationifc"
 )
 
-type actions struct {
+type ActionFactory struct {
 	reservations reservationifc.Canceler
 	payments     paymentifc.Canceler
 	loyalty      loyaltyifc.Updater
 }
 
-func NewActions(
+var _ entities.ActionBinder = (*ActionFactory)(nil)
+
+func NewActionFactory(
 	reservations reservationifc.Canceler, payments paymentifc.Canceler, loyalty loyaltyifc.Updater,
-) entities.ActionVisitors {
-	handlers := &actions{reservations: reservations, payments: payments, loyalty: loyalty}
-	return entities.ActionVisitors{
-		CancelPayment:     entities.ActionVisitorFunc[entities.CancelPaymentOperation](handlers.VisitCancelPayment),
-		CancelReservation: entities.ActionVisitorFunc[entities.CancelReservationOperation](handlers.VisitCancelReservation),
-		RollbackLoyalty:   entities.ActionVisitorFunc[entities.RollbackLoyaltyOperation](handlers.VisitRollbackLoyalty),
-		DecreaseLoyalty:   entities.ActionVisitorFunc[entities.DecreaseLoyaltyOperation](handlers.VisitDecreaseLoyalty),
-		ResolveCreation:   entities.ActionVisitorFunc[entities.ResolveCreationOperation](handlers.VisitResolveCreation),
-	}
+) *ActionFactory {
+	return &ActionFactory{reservations: reservations, payments: payments, loyalty: loyalty}
 }
 
-func (p *actions) VisitCancelPayment(ctx context.Context, operation entities.CancelPaymentOperation) (bool, error) {
+func (p *ActionFactory) BindCancelPayment(payload entities.CancelPaymentOperation) entities.Action {
+	return bindAction(payload, p.visitCancelPayment)
+}
+
+func (p *ActionFactory) BindCancelReservation(payload entities.CancelReservationOperation) entities.Action {
+	return bindAction(payload, p.visitCancelReservation)
+}
+
+func (p *ActionFactory) BindRollbackLoyalty(payload entities.RollbackLoyaltyOperation) entities.Action {
+	return bindAction(payload, p.visitRollbackLoyalty)
+}
+
+func (p *ActionFactory) BindDecreaseLoyalty(payload entities.DecreaseLoyaltyOperation) entities.Action {
+	return bindAction(payload, p.visitDecreaseLoyalty)
+}
+
+func (p *ActionFactory) BindResolveCreation(payload entities.ResolveCreationOperation) entities.Action {
+	return bindAction(payload, p.visitResolveCreation)
+}
+
+func bindAction[T entities.OperationPayload](
+	payload T, visit entities.ActionVisitor[T],
+) entities.OperationAction[T] {
+	return entities.OperationAction[T]{Payload: payload, Visitor: visit}
+}
+
+func (p *ActionFactory) visitCancelPayment(
+	ctx context.Context, operation entities.CancelPaymentOperation,
+) (bool, error) {
 	return false, oops.Wrap(p.payments.CancelPayment(ctx, operation.PaymentUID))
 }
 
-func (p *actions) VisitCancelReservation(
+func (p *ActionFactory) visitCancelReservation(
 	ctx context.Context, operation entities.CancelReservationOperation,
 ) (bool, error) {
 	return false, oops.Wrap(p.reservations.CancelReservation(ctx, operation.ReservationUID, operation.User))
 }
 
-func (p *actions) VisitRollbackLoyalty(ctx context.Context, operation entities.RollbackLoyaltyOperation) (bool, error) {
+func (p *ActionFactory) visitRollbackLoyalty(
+	ctx context.Context, operation entities.RollbackLoyaltyOperation,
+) (bool, error) {
 	return false, oops.Wrap(p.loyalty.ChangeLoyalty(ctx, operation.User, -1, operation.OperationID))
 }
 
-func (p *actions) VisitDecreaseLoyalty(ctx context.Context, operation entities.DecreaseLoyaltyOperation) (bool, error) {
+func (p *ActionFactory) visitDecreaseLoyalty(
+	ctx context.Context, operation entities.DecreaseLoyaltyOperation,
+) (bool, error) {
 	return false, oops.Wrap(p.loyalty.ChangeLoyalty(ctx, operation.User, -1, operation.OperationID))
 }
 
-func (p *actions) VisitResolveCreation(ctx context.Context, operation entities.ResolveCreationOperation) (bool, error) {
+func (p *ActionFactory) visitResolveCreation(
+	ctx context.Context, operation entities.ResolveCreationOperation,
+) (bool, error) {
 	committed, err := p.loyalty.ResolveCreation(ctx, operation.User, operation.ReservationUID)
 	return committed, oops.Wrap(err)
 }

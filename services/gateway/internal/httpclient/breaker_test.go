@@ -9,8 +9,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/sony/gobreaker/v2"
-
 	"lab2/gateway/internal/models/entities"
 )
 
@@ -112,7 +110,7 @@ func TestBreakerFailedProbeReopens(t *testing.T) {
 	})
 }
 
-func executeRead(b *gobreaker.TwoStepCircuitBreaker[struct{}], ctx context.Context, call func() error) error {
+func executeRead(b *Breaker, ctx context.Context, call func() error) error {
 	_, err := Read(ctx, b, entities.ErrPaymentUnavailable, func() (struct{}, error) {
 		return struct{}{}, call()
 	})
@@ -132,7 +130,7 @@ func TestBreakerCanceledProbeAllowsAnotherProbe(t *testing.T) {
 		})
 		called := false
 		err := executeRead(b, t.Context(), func() error { called = true; return nil })
-		if err != nil || !called || b.State() != gobreaker.StateClosed {
+		if err != nil || !called || b.State() != stateClosed {
 			t.Fatalf("probe after cancellation: called=%v, state=%v, err=%v", called, b.State(), err)
 		}
 	})
@@ -147,5 +145,29 @@ func TestBreakerClientTimeoutCountsAsFailure(t *testing.T) {
 	err := executeRead(b, t.Context(), func() error { t.Fatal("open breaker called upstream"); return nil })
 	if !errors.Is(err, entities.ErrPaymentUnavailable) {
 		t.Fatalf("missing service availability error: %v", err)
+	}
+}
+
+func TestBreakerRingRequiresConsecutiveFailures(t *testing.T) {
+	t.Parallel()
+	b := NewBreaker(BreakerConfig{FailureThreshold: 5, ResetTimeout: time.Second})
+	fail := func() error { return entities.ErrUpstreamUnavailable }
+	succeed := func() error { return nil }
+	for range 3 {
+		for range 4 {
+			_ = executeRead(b, t.Context(), fail)
+		}
+		if err := executeRead(b, t.Context(), succeed); err != nil {
+			t.Fatalf("nonconsecutive failures opened breaker: %v", err)
+		}
+	}
+	for range 5 {
+		_ = executeRead(b, t.Context(), fail)
+	}
+	if err := executeRead(b, t.Context(), func() error {
+		t.Fatal("full failure ring called upstream")
+		return nil
+	}); !errors.Is(err, entities.ErrPaymentUnavailable) {
+		t.Fatalf("full failure ring did not open breaker: %v", err)
 	}
 }

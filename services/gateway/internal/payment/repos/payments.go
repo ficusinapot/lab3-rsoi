@@ -6,7 +6,6 @@ import (
 	"uuid"
 
 	"github.com/samber/oops"
-	"github.com/sony/gobreaker/v2"
 	"lab2/gateway/internal/clients/contracts"
 	"lab2/gateway/internal/httpclient"
 	"lab2/gateway/internal/models/entities"
@@ -15,11 +14,11 @@ import (
 
 type Repository struct {
 	client  *contracts.ClientWithResponses
-	breaker *gobreaker.TwoStepCircuitBreaker[struct{}]
+	breaker *httpclient.Breaker
 }
 
 func New(
-	transport *httpclient.Client, baseURL string, breaker *gobreaker.TwoStepCircuitBreaker[struct{}],
+	transport *httpclient.Client, baseURL string, breaker *httpclient.Breaker,
 ) (*Repository, error) {
 	client, err := contracts.NewClientWithResponses(baseURL, contracts.WithHTTPClient(transport))
 	if err != nil {

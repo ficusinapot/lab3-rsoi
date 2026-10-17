@@ -45,7 +45,7 @@ func TestCreationCompensationContinuesThroughWorker(t *testing.T) {
 		}
 		l.EXPECT().ChangeLoyalty(gomock.Any(), testUser, -1, gomock.Any()).Return(nil)
 		l.EXPECT().ResolveCreation(gomock.Any(), testUser, id).Return(false, nil)
-		processor := operations.New(operations.NewExecutor(operations.NewActions(r, p, l)))
+		processor := operations.New(operations.NewExecutor(operations.NewActionFactory(r, p, l)))
 		stream := opstream.NewMemory(cfg, processor, slog.New(slog.NewTextHandler(io.Discard, nil)))
 		service := NewCommands(r, l, operations.NewGroups(stream, cfg.RollbackTimeout, r, p, l))
 		start := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)

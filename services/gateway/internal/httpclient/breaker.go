@@ -3,11 +3,12 @@ package httpclient
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
-	"github.com/samber/oops"
-	"github.com/sony/gobreaker/v2"
 	"lab2/gateway/internal/models/entities"
+
+	"github.com/samber/oops"
 )
 
 type BreakerConfig struct {
@@ -15,21 +16,97 @@ type BreakerConfig struct {
 	ResetTimeout     time.Duration `mapstructure:"reset_timeout"`
 }
 
-func NewBreaker(cfg BreakerConfig) *gobreaker.TwoStepCircuitBreaker[struct{}] {
-	return gobreaker.NewTwoStepCircuitBreaker[struct{}](gobreaker.Settings{
-		MaxRequests: 1,
-		Timeout:     cfg.ResetTimeout,
-		ReadyToTrip: func(counts gobreaker.Counts) bool {
-			return int64(counts.ConsecutiveFailures) >= int64(cfg.FailureThreshold)
-		},
-		IsExcluded: func(err error) bool {
-			return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
-		},
-	})
+type BreakerState uint8
+
+const (
+	stateClosed BreakerState = iota
+	stateOpen
+	stateHalfOpen
+)
+
+type Breaker struct {
+	mu           sync.Mutex
+	failures     []bool
+	next         int
+	failureCount int
+	state        BreakerState
+	generation   uint64
+	retryAt      time.Time
+	resetTimeout time.Duration
+	probing      bool
+}
+
+func NewBreaker(cfg BreakerConfig) *Breaker {
+	return &Breaker{failures: make([]bool, cfg.FailureThreshold), resetTimeout: cfg.ResetTimeout}
+}
+
+func (b *Breaker) State() BreakerState {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.state
+}
+
+func (b *Breaker) Allow() (func(error), error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.state == stateOpen {
+		if time.Now().Before(b.retryAt) {
+			return nil, oops.Wrap(entities.ErrUpstreamUnavailable)
+		}
+		b.state = stateHalfOpen
+		b.generation++
+	}
+	if b.state == stateHalfOpen {
+		if b.probing {
+			return nil, oops.Wrap(entities.ErrUpstreamUnavailable)
+		}
+		b.probing = true
+	}
+	generation := b.generation
+	var once sync.Once
+	return func(err error) { once.Do(func() { b.complete(generation, err) }) }, nil
+}
+
+func (b *Breaker) complete(generation uint64, err error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if generation != b.generation {
+		return
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		b.probing = false
+		return
+	}
+	failed := err != nil
+	if b.state == stateHalfOpen {
+		b.probing = false
+		if !failed {
+			b.state = stateClosed
+			b.generation++
+			clear(b.failures)
+			b.next, b.failureCount = 0, 0
+			return
+		}
+	} else {
+		if b.failures[b.next] {
+			b.failureCount--
+		}
+		b.failures[b.next] = failed
+		if failed {
+			b.failureCount++
+		}
+		b.next = (b.next + 1) % len(b.failures)
+		if b.failureCount < len(b.failures) {
+			return
+		}
+	}
+	b.state = stateOpen
+	b.generation++
+	b.retryAt = time.Now().Add(b.resetTimeout)
 }
 
 func Read[T any](
-	ctx context.Context, b *gobreaker.TwoStepCircuitBreaker[struct{}], service error, call func() (T, error),
+	ctx context.Context, b *Breaker, service error, call func() (T, error),
 ) (result T, err error) {
 	if err = ctx.Err(); err != nil {
 		return result, oops.Wrap(err)
