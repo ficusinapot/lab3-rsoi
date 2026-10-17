@@ -26,7 +26,7 @@ func newTestCommands(r reservationifc.Bookings, p paymentifc.Payments, l loyalty
 		PollInterval:        10 * time.Second,
 		ShutdownTimeout:     20 * time.Second,
 	}
-	processor := operations.New(operations.NewActions(r, p, l))
+	processor := operations.New(operations.NewExecutor(operations.NewActions(r, p, l)))
 	stream := opstream.NewMemory(cfg, processor, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	return &testCommands{
 		Commands: NewCommands(r, l, operations.NewGroups(stream, cfg.RollbackTimeout, r, p, l)),

@@ -223,7 +223,7 @@ func TestProcessorCompletesWithoutOutstandingSteps(t *testing.T) {
 }
 
 func newTestProcessor(r reservationifc.Canceler, p paymentifc.Canceler, l loyaltyifc.Updater) *Processor {
-	return New(NewActions(r, p, l))
+	return New(NewExecutor(NewActions(r, p, l)))
 }
 
 func operationPayload[T entities.OperationPayload](t *testing.T, task entities.Operation) T {

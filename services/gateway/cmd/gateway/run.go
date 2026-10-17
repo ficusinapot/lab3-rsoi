@@ -64,7 +64,7 @@ func Run(ctx context.Context, cfg Config) (err error) {
 		return oops.Wrap(err)
 	}
 
-	actions := operations.NewActions(reservations, payments, loyalty)
+	actions := operations.NewExecutor(operations.NewActions(reservations, payments, loyalty))
 	processor := operations.New(actions)
 	storageCtx, cancelStorage := context.WithTimeout(ctx, cfg.OpStream.StorageTimeout)
 	store, err := redisopstream.New(storageCtx, cfg.Redis, cfg.OpStream)
